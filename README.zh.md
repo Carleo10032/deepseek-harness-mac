@@ -1,0 +1,129 @@
+<div align="center">
+
+<img src="Assets/AppIcon-preview.png" alt="DeepSeek Harness Mac 应用图标" width="112" />
+
+# DeepSeek Harness Mac
+
+**[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 本地 Web UI 的非官方 SwiftUI macOS 外壳。**
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg)
+![Last commit](https://img.shields.io/github/last-commit/Carleo10032/deepseek-harness-mac)
+
+[English](README.md) · [中文](README.zh.md)
+
+</div>
+
+> [!IMPORTANT]
+> **免责声明** — 本项目是社区开发的非官方封装，与 DeepSeek（深度求索）**没有任何
+> 关联**，亦未获得其认可或背书。"DeepSeek" 名称与鲸鱼 Logo 是 DeepSeek 的商标，归其
+> 所有；本项目仅以技术兼容为目的引用该名称与图标。
+>
+> **Disclaimer** — This is an unofficial community project. It is **not affiliated with,
+> endorsed by, or sponsored by DeepSeek**. The name "DeepSeek" and the whale logo are
+> trademarks of DeepSeek and remain its property.
+
+## 概览
+
+DeepSeek Harness Mac 以本地服务的方式启动 DeepSeek Harness CLI（`dsh web`），并把它的
+Web UI 显示在原生 `WKWebView` 窗口中。窗口符合 macOS 的使用习惯：点击红色关闭按钮只是
+隐藏界面、服务继续在后台运行；点击 Dock 图标可重新显示窗口；`⌘Q` 则完全退出一切。
+
+## 功能
+
+- **启动快** — 优先复用 `npx` 已缓存的 `dsh`，后续启动跳过依赖解析；缓存不存在时才
+  回退到 `npx`。
+- **原生下载** — 网页下载由 `WKDownloadDelegate` 接管：Session Log 和其他文件会弹出
+  macOS 保存面板（包括前端生成的 `blob:` 下载）。网页原有的"下载已开始"提示被抑制；
+  用户取消时保持静默，只有文件真正保存完成后才显示确认。
+- **Dock 友好** — 红色关闭按钮只隐藏窗口、服务继续运行；点击 Dock 图标恢复窗口；
+  `⌘Q` 完全退出并终止整个子进程树。
+- **可靠的启动界面** — 服务启动时显示进度，拿到本地 URL 后立即加载 Web UI；启动失败
+  时显示错误状态和"重新启动"按钮。
+- **官方图标** — 应用图标衍生自 DeepSeek Harness Web UI 包中的官方黑色鲸鱼
+  `favicon.svg`，保留原始路径轮廓与黑色填充，置于 macOS 白色圆角底板上
+  （生成脚本：[`Scripts/make_icon.swift`](Scripts/make_icon.swift)）。
+
+## 环境要求
+
+| 依赖 | 版本 | 用途 | 安装方式 |
+| --- | --- | --- | --- |
+| macOS | 13.0+ | 运行 | — |
+| Xcode Command Line Tools | 任意较新版本 | 构建 | `xcode-select --install` |
+| Node.js（含 `npx`） | 建议 20+（LTS） | 运行 | `brew install node`、[nvm](https://github.com/nvm-sh/nvm) 或 [Volta](https://volta.sh) |
+
+## 安装
+
+### 从源码构建
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/Carleo10032/deepseek-harness-mac.git
+cd deepseek-harness-mac
+
+# 2. 如果缺少 swiftc，先安装 Xcode Command Line Tools
+xcode-select --install
+
+# 3. 构建 App
+chmod +x build.sh
+./build.sh
+```
+
+构建产物位于 `build/DeepSeek Harness.app`。
+
+### 安装到"应用程序"文件夹
+
+```bash
+cp -R "build/DeepSeek Harness.app" /Applications/
+open "/Applications/DeepSeek Harness.app"
+```
+
+> **关于 Gatekeeper：** `build.sh` 使用临时（ad-hoc）签名，本地构建的副本可直接运行。
+> 如果从网上下载的副本被 Gatekeeper 拦截，请移除其隔离属性——仅限你信任的副本：
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"
+> ```
+
+## 使用
+
+- 启动 App，本地服务就绪后会自动加载 Web UI。
+- Harness 会话的工作目录：若 `~/Documents/Vibe` 存在则使用它，否则使用你的主目录
+  （见 [`Sources/main.swift`](Sources/main.swift) 中的 `defaultWorkingDirectory()`）。
+- 点击红色关闭按钮隐藏窗口，服务继续运行；点击 Dock 图标恢复窗口。
+- 按 `⌘Q` 完全退出 App 并关闭本地服务。
+- 启动失败时，窗口会显示最后一行日志和"重新启动"按钮。
+
+## 工作原理
+
+1. 启动时，App 按以下顺序寻找 DeepSeek Harness 可执行文件：
+   1. `PATH` 中的全局 `dsh`（`/opt/homebrew/bin/dsh`、`/usr/local/bin/dsh` 等）；
+   2. `~/.npm/_npx` 缓存中版本匹配 `0.1.0-rc.6` 的 `dsh`；
+   3. 兜底：`npx --yes @deepseek-ai/dsh@0.1.0-rc.6`。
+2. 以 `web --host 127.0.0.1 --port 0` 启动本地服务——仅监听回环地址、随机空闲端口。
+3. 从子进程输出中解析出 `http://127.0.0.1:<port>` 地址，并在 `WKWebView` 中加载。
+
+Harness 版本在 `Sources/main.swift` 中固定为 `0.1.0-rc.6`。
+
+## 常见问题
+
+| 现象 | 可能原因 | 解决办法 |
+| --- | --- | --- |
+| 提示"找不到 npx，请先安装 Node.js" | `PATH` 中没有 `npx` | 安装 Node.js 后重新启动 |
+| 首次启动较慢 | `npx` 缓存未命中 | 属正常现象；后续启动会复用缓存的 `dsh` |
+| 窗口显示启动失败 | 本地服务退出 | 查看窗口中显示的最后一行日志，确认固定版本的 `dsh` 可达 |
+| macOS 拦截下载的副本（"已损坏"） | Gatekeeper + 临时签名 | `xattr -dr com.apple.quarantine`（见"安装"一节） |
+
+## 参与贡献
+
+欢迎提交 Bug 报告和 Pull Request。请 Fork 本仓库，使用 `./build.sh` 构建，并保持改动
+小而聚焦。问题请提交到
+[Issue 追踪器](https://github.com/Carleo10032/deepseek-harness-mac/issues)。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 Carleo10032
+
+基于 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)（MIT ©
+DeepSeek）构建。应用图标衍生自其 Web UI 包中的 `favicon.svg`；"DeepSeek" 名称与鲸鱼
+Logo 的商标归 DeepSeek 所有。

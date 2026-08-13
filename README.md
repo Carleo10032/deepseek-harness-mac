@@ -1,71 +1,139 @@
+<div align="center">
+
+<img src="Assets/AppIcon-preview.png" alt="DeepSeek Harness Mac app icon" width="112" />
+
 # DeepSeek Harness Mac
 
-一个最小的 SwiftUI macOS 外壳：启动 `npx @deepseek-ai/dsh@0.1.0-rc.6 web`，并在
-`WKWebView` 中显示本地 Web UI。点击红色关闭按钮时隐藏窗口并保持后台服务；
-点击 Dock 图标可重新显示，使用 `Command-Q` 才会完全退出。
+**An unofficial SwiftUI macOS shell for the [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) local web UI.**
 
-A minimal SwiftUI macOS shell that boots the [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)
-local Web UI inside a `WKWebView`, with Dock-friendly hide/restore behavior.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg)
+![Last commit](https://img.shields.io/github/last-commit/Carleo10032/deepseek-harness-mac)
+
+[English](README.md) · [中文](README.zh.md)
+
+</div>
 
 > [!IMPORTANT]
-> **免责声明 / Disclaimer**
-> 本项目是社区开发的非官方封装，与 DeepSeek（深度求索）**没有任何关联**，也
-> 未获得其认可或背书。"DeepSeek" 名称与鲸鱼 Logo 是 DeepSeek 的商标，归其
-> 所有。本项目仅以技术兼容为目的引用该名称与图标。
+> **Disclaimer** — This is an unofficial community project. It is **not affiliated with,
+> endorsed by, or sponsored by DeepSeek**. The name "DeepSeek" and the whale logo are
+> trademarks of DeepSeek and remain its property; they are referenced here solely for
+> technical compatibility.
 >
-> This is an unofficial community wrapper. It is **not affiliated with,
-> endorsed by, or sponsored by DeepSeek**. The "DeepSeek" name and the whale
-> logo are trademarks of DeepSeek. They are used here solely for technical
-> compatibility.
+> **免责声明** — 本项目是社区开发的非官方封装，与 DeepSeek（深度求索）无任何关联，
+> 亦未获得其认可或背书。"DeepSeek" 名称与鲸鱼 Logo 的商标归 DeepSeek 所有。
 
-## 功能
+## Overview
 
-- 一键启动：优先复用 npm 已下载的 `dsh` 缓存，避免每次启动都等待 `npx`
-  重新解析依赖；缓存不存在时才回退到 `npx`。
-- 本地服务发现：从子进程输出中解析 `http://127.0.0.1:<port>`，服务就绪后
-  自动加载页面。
-- Dock 友好：点红色关闭按钮只是隐藏窗口、服务继续在后台运行；点 Dock 图标
-  重新显示窗口；`Command-Q` 完全退出并清理子进程树。
-- 原生下载：网页下载由 `WKDownloadDelegate` 接管，Session Log 和其他文件会
-  弹出 macOS 保存面板，并支持由前端生成的 `blob:` 下载。网页原有的"下载已
-  开始"提示不会提前出现；用户取消时保持静默，只有文件确实保存完成后才显示
-  下载成功。
-- 图标：使用 DeepSeek Harness 官方 Web UI 包中的黑色鲸鱼 `favicon.svg`，
-  保持原始路径轮廓与黑色填充，仅增加 macOS 图标所需的白色圆角底板与留白
-  （生成脚本见 [`Scripts/make_icon.swift`](Scripts/make_icon.swift)）。
+DeepSeek Harness Mac launches the DeepSeek Harness CLI (`dsh web`) as a local service and
+presents its web UI in a native `WKWebView` window. The window behaves like a proper macOS
+citizen: closing it only hides the UI while the service keeps running in the background,
+clicking the Dock icon restores it, and `⌘Q` quits everything.
 
-## 前置要求
+## Features
 
-- macOS 13.0 或更高版本
-- Xcode Command Line Tools（提供 `swiftc`，仅构建时需要）
-- Node.js 与 `npx`（运行 App 时需要；`npx` 位于 PATH 中，或已通过
-  `npx @deepseek-ai/dsh@0.1.0-rc.6` 下载过缓存）
+- **Fast startup** — reuses the `dsh` install already cached by `npx`, so subsequent
+  launches skip dependency resolution; falls back to `npx` when no cache exists.
+- **Native downloads** — downloads are handled by `WKDownloadDelegate`: a macOS save panel
+  is presented for Session Logs and other files (including frontend-generated `blob:`
+  downloads). The web UI's own "download started" dialog is suppressed; cancelled downloads
+  stay silent, and a confirmation appears only after the file has actually been saved.
+- **Dock-friendly lifecycle** — the red close button hides the window while the service
+  keeps running; a Dock click restores the window; `⌘Q` fully quits and terminates the
+  entire child process tree.
+- **Robust startup UI** — the window shows progress while the service boots, loads the web
+  UI as soon as the local URL is known, and offers an actionable error state with a restart
+  button on failure.
+- **Official icon** — the app icon derives from the official black whale `favicon.svg`
+  shipped in the DeepSeek Harness web UI package, keeping its original path outline and
+  black fill on a rounded white macOS background
+  (generator: [`Scripts/make_icon.swift`](Scripts/make_icon.swift)).
 
-## 构建
+## Requirements
+
+| Requirement | Version | Needed for | How to install |
+| --- | --- | --- | --- |
+| macOS | 13.0+ | Running | — |
+| Xcode Command Line Tools | any recent | Building | `xcode-select --install` |
+| Node.js (with `npx`) | 20+ (LTS) recommended | Running | `brew install node`, [nvm](https://github.com/nvm-sh/nvm), or [Volta](https://volta.sh) |
+
+## Installation
+
+### Build from source
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/Carleo10032/deepseek-harness-mac.git
+cd deepseek-harness-mac
+
+# 2. Install the Xcode Command Line Tools if `swiftc` is missing
+xcode-select --install
+
+# 3. Build the app bundle
 chmod +x build.sh
 ./build.sh
 ```
 
-生成文件：`build/DeepSeek Harness.app`（临时 ad-hoc 签名；如需分发请改用
-你自己的开发者证书签名并公证）。
+The app bundle is produced at `build/DeepSeek Harness.app`.
 
-## 工作原理
+### Install into /Applications
 
-App 启动后按以下顺序寻找 DeepSeek Harness 的可执行入口：
+```bash
+cp -R "build/DeepSeek Harness.app" /Applications/
+open "/Applications/DeepSeek Harness.app"
+```
 
-1. PATH 中的全局 `dsh`（`/opt/homebrew/bin/dsh`、`/usr/local/bin/dsh` 等）
-2. `~/.npm/_npx` 缓存中与 `0.1.0-rc.6` 版本匹配的 `dsh`
-3. 回退到 `npx --yes @deepseek-ai/dsh@0.1.0-rc.6`
+> **Note on Gatekeeper:** `build.sh` signs the bundle with an ad-hoc signature, which is
+> fine for locally built copies. If a copy obtained from the internet is blocked by
+> Gatekeeper, remove its quarantine attribute — only for copies you trust:
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"
+> ```
 
-随后以 `web --host 127.0.0.1 --port 0` 启动本地服务（随机端口，仅监听回环
-地址），从标准输出中解析实际端口，并在 `WKWebView` 中加载。
+## Usage
 
-## 许可证
+- Launch the app. It starts the local service and shows the web UI as soon as the port is
+  known.
+- The harness session runs with `~/Documents/Vibe` as its working directory when that
+  folder exists, otherwise your home directory
+  (see `defaultWorkingDirectory()` in [`Sources/main.swift`](Sources/main.swift)).
+- Click the red close button to hide the window — the service keeps running. Click the Dock
+  icon to bring the window back.
+- Press `⌘Q` to fully quit the app and shut down the service.
+- If startup fails, the window shows the last log line and a restart button.
+
+## How it works
+
+1. On launch, the app locates a DeepSeek Harness executable, in order:
+   1. a global `dsh` on `PATH` (`/opt/homebrew/bin/dsh`, `/usr/local/bin/dsh`, …),
+   2. the `dsh` matching version `0.1.0-rc.6` inside the `~/.npm/_npx` cache,
+   3. fallback: `npx --yes @deepseek-ai/dsh@0.1.0-rc.6`.
+2. It runs `web --host 127.0.0.1 --port 0` — a loopback-only listener on a random free port.
+3. It parses the `http://127.0.0.1:<port>` URL from the child process output and loads it
+   in a `WKWebView`.
+
+The harness version is pinned to `0.1.0-rc.6` in `Sources/main.swift`.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| "找不到 npx，请先安装 Node.js" | `npx` is not on `PATH` | Install Node.js and relaunch |
+| First launch takes a while | `npx` cache miss | Expected once; later launches reuse the cached `dsh` |
+| The window shows a failure message | The local service exited | Read the last log line shown in the window and make sure the pinned `dsh` version is reachable |
+| macOS blocks a downloaded copy ("damaged app") | Gatekeeper + ad-hoc signature | `xattr -dr com.apple.quarantine` (see Installation) |
+
+## Contributing
+
+Bug reports and pull requests are welcome. Fork the repository, build with `./build.sh`,
+and keep changes minimal and focused. Report issues on the
+[issue tracker](https://github.com/Carleo10032/deepseek-harness-mac/issues).
+
+## License
 
 [MIT](LICENSE) © 2026 Carleo10032
 
-本项目基于 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)
-（MIT License, © DeepSeek）构建。App 图标衍生自其 Web UI 包中的
-`favicon.svg`，DeepSeek 名称与鲸鱼 Logo 的商标权归 DeepSeek 所有。
+Built on top of [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)
+(MIT © DeepSeek). The app icon derives from the `favicon.svg` shipped in its web UI
+package; the "DeepSeek" name and whale logo are trademarks of DeepSeek.
