@@ -323,6 +323,7 @@ struct HarnessWebView: NSViewRepresentable {
         )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         context.coordinator.attach(to: webView)
         webView.setValue(false, forKey: "drawsBackground")
         return webView
@@ -334,7 +335,7 @@ struct HarnessWebView: NSViewRepresentable {
     }
 
     @MainActor
-    final class DownloadCoordinator: NSObject, WKNavigationDelegate, WKDownloadDelegate {
+    final class DownloadCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         static let sessionDownloadDialogSuppressionScript = #"""
         (() => {
           const style = document.createElement("style");
@@ -385,10 +386,121 @@ struct HarnessWebView: NSViewRepresentable {
             preferences: WKWebpagePreferences,
             decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
         ) {
-            let policy: WKNavigationActionPolicy = navigationAction.shouldPerformDownload
-                ? .download
-                : .allow
-            decisionHandler(policy, preferences)
+            if navigationAction.shouldPerformDownload {
+                decisionHandler(.download, preferences)
+                return
+            }
+
+            guard navigationAction.navigationType == .linkActivated,
+                  let url = navigationAction.request.url,
+                  isExternalURL(url, relativeTo: webView.url)
+            else {
+                decisionHandler(.allow, preferences)
+                return
+            }
+
+            openExternally(url)
+            decisionHandler(.cancel, preferences)
+        }
+
+        // MARK: WKUIDelegate
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            // `target="_blank"` and `window.open`: open in the default browser
+            // instead of creating a second in-app window.
+            if let url = navigationAction.request.url {
+                openExternally(url)
+            }
+            return nil
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptAlertPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping () -> Void
+        ) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "DeepSeek Harness"
+            alert.informativeText = message
+            presentAlert(alert) { _ in
+                completionHandler()
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptConfirmPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (Bool) -> Void
+        ) {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "DeepSeek Harness"
+            alert.informativeText = message
+            alert.addButton(withTitle: "确定")
+            alert.addButton(withTitle: "取消")
+            presentAlert(alert) { response in
+                completionHandler(response == .alertFirstButtonReturn)
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptTextInputPanelWithPrompt prompt: String,
+            defaultText: String?,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (String?) -> Void
+        ) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "DeepSeek Harness"
+            alert.informativeText = prompt
+            let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+            inputField.stringValue = defaultText ?? ""
+            alert.accessoryView = inputField
+            alert.addButton(withTitle: "确定")
+            alert.addButton(withTitle: "取消")
+            presentAlert(alert) { response in
+                completionHandler(response == .alertFirstButtonReturn ? inputField.stringValue : nil)
+            }
+        }
+
+        // MARK: External links
+
+        private func isExternalURL(_ url: URL, relativeTo localURL: URL?) -> Bool {
+            guard let scheme = url.scheme?.lowercased() else { return false }
+            switch scheme {
+            case "http", "https":
+                guard let local = localURL else { return true }
+                return url.host != local.host || url.port != local.port
+            case "mailto", "tel", "file":
+                return true
+            default:
+                // blob:, data:, about:, javascript:, … — let WebKit handle them.
+                return false
+            }
+        }
+
+        private func openExternally(_ url: URL) {
+            NSWorkspace.shared.open(url)
+        }
+
+        private func presentAlert(
+            _ alert: NSAlert,
+            completion: @escaping (NSApplication.ModalResponse) -> Void
+        ) {
+            if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+                alert.beginSheetModal(for: window, completionHandler: completion)
+            } else {
+                completion(alert.runModal())
+            }
         }
 
         func webView(

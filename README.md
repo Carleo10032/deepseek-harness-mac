@@ -41,6 +41,11 @@ clicking the Dock icon restores it, and `⌘Q` quits everything.
 - **Dock-friendly lifecycle** — the red close button hides the window while the service
   keeps running; a Dock click restores the window; `⌘Q` fully quits and terminates the
   entire child process tree.
+- **External links in your browser** — links to other websites open in your default
+  browser instead of hijacking the app window (`target="_blank"` and `window.open`
+  included); `mailto:` links are handed to your mail client.
+- **Native dialogs** — the web UI's `alert`, `confirm`, and `prompt` calls are presented
+  as native macOS dialogs.
 - **Robust startup UI** — the window shows progress while the service boots, loads the web
   UI as soon as the local URL is known, and offers an actionable error state with a restart
   button on failure.
