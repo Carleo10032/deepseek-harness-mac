@@ -106,25 +106,49 @@ open "/Applications/DeepSeek Harness.app"
 - Click the red close button to hide the window — the service keeps running. Click the Dock
   icon to bring the window back.
 - Press `⌘Q` to fully quit the app and shut down the service.
-- If startup fails, the window shows the last log line and a restart button.
+- If startup fails, the window shows the last log line, a restart button, and an
+  **"Install dsh globally"** button that runs `npm install --global @deepseek-ai/dsh` and
+  then relaunches.
+
+## Configuration
+
+Two launch-time settings are read from `UserDefaults` (set them with `defaults write`
+against the bundle id `io.github.carleo10032.deepseek-harness-mac`):
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `DSHPreferredPort` | `3080` | Preferred local port. `0` means "always pick a random free port". |
+| `DSHBinOverride` | *(empty)* | Absolute path to a specific `dsh` executable, taking priority over every auto-discovered source. |
+
+```bash
+# Serve on a different fixed port
+defaults write io.github.carleo10032.deepseek-harness-mac DSHPreferredPort -int 8080
+
+# Pin the app to a custom dsh build
+defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string "/path/to/dsh"
+```
 
 ## How it works
 
 1. On launch, the app locates a DeepSeek Harness executable, in order:
-   1. a global `dsh` on `PATH` (`/opt/homebrew/bin/dsh`, `/usr/local/bin/dsh`, …),
-   2. the `dsh` matching version `0.1.0-rc.6` inside the `~/.npm/_npx` cache,
-   3. fallback: `npx --yes @deepseek-ai/dsh@0.1.0-rc.6`.
-2. It runs `web --host 127.0.0.1 --port 0` — a loopback-only listener on a random free port.
+   1. the `DSHBinOverride` path (when set and executable),
+   2. a global `dsh` on `PATH` (Homebrew, Volta, `~/.local/bin`, `~/.npm-global/bin`, …),
+   3. the `dsh` matching version `0.1.0-rc.6` inside the `~/.npm/_npx` cache,
+   4. fallback: `npx --yes @deepseek-ai/dsh@0.1.0-rc.6`.
+2. It runs `web --host 127.0.0.1 --port <DSHPreferredPort>` — a loopback-only listener. If
+   the preferred port is already in use (`EADDRINUSE`), it retries once with a random free
+   port.
 3. It parses the `http://127.0.0.1:<port>` URL from the child process output and loads it
    in a `WKWebView`.
 
-The harness version is pinned to `0.1.0-rc.6` in `Sources/main.swift`.
+The harness version is pinned to `0.1.0-rc.6` in a single constant
+(`pinnedDSHVersion`) in `Sources/main.swift`.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| "找不到 npx，请先安装 Node.js" | `npx` is not on `PATH` | Install Node.js and relaunch |
+| "找不到 dsh，也未找到 npx" | No `dsh` or Node.js/`npx` found | Install Node.js, or click "Install dsh globally" |
 | First launch takes a while | `npx` cache miss | Expected once; later launches reuse the cached `dsh` |
 | The window shows a failure message | The local service exited | Read the last log line shown in the window and make sure the pinned `dsh` version is reachable |
 | macOS blocks a downloaded copy ("damaged app") | Gatekeeper + ad-hoc signature | `xattr -dr com.apple.quarantine` (see Installation) |

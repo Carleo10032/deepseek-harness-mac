@@ -96,24 +96,47 @@ open "/Applications/DeepSeek Harness.app"
   （见 [`Sources/main.swift`](Sources/main.swift) 中的 `defaultWorkingDirectory()`）。
 - 点击红色关闭按钮隐藏窗口，服务继续运行；点击 Dock 图标恢复窗口。
 - 按 `⌘Q` 完全退出 App 并关闭本地服务。
-- 启动失败时，窗口会显示最后一行日志和"重新启动"按钮。
+- 启动失败时，窗口会显示最后一行日志、"重新启动"按钮，以及一个
+  **"安装全局 dsh"** 按钮——它会执行 `npm install --global @deepseek-ai/dsh`，成功后
+  自动重新启动。
+
+## 配置
+
+两个启动期设置从 `UserDefaults` 读取（用 `defaults write` 写入，域名是
+`io.github.carleo10032.deepseek-harness-mac`）：
+
+| 键 | 默认值 | 含义 |
+| --- | --- | --- |
+| `DSHPreferredPort` | `3080` | 首选本地端口；设为 `0` 表示"每次都用随机空闲端口"。 |
+| `DSHBinOverride` | *(空)* | 指向某个 `dsh` 可执行文件的绝对路径，优先级高于所有自动发现来源。 |
+
+```bash
+# 改用其他固定端口
+defaults write io.github.carleo10032.deepseek-harness-mac DSHPreferredPort -int 8080
+
+# 固定使用自定义 dsh 构建
+defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string "/path/to/dsh"
+```
 
 ## 工作原理
 
 1. 启动时，App 按以下顺序寻找 DeepSeek Harness 可执行文件：
-   1. `PATH` 中的全局 `dsh`（`/opt/homebrew/bin/dsh`、`/usr/local/bin/dsh` 等）；
-   2. `~/.npm/_npx` 缓存中版本匹配 `0.1.0-rc.6` 的 `dsh`；
-   3. 兜底：`npx --yes @deepseek-ai/dsh@0.1.0-rc.6`。
-2. 以 `web --host 127.0.0.1 --port 0` 启动本地服务——仅监听回环地址、随机空闲端口。
+   1. `DSHBinOverride` 指定的路径（若设置且可执行）；
+   2. `PATH` 中的全局 `dsh`（Homebrew、Volta、`~/.local/bin`、`~/.npm-global/bin` 等）；
+   3. `~/.npm/_npx` 缓存中版本匹配 `0.1.0-rc.6` 的 `dsh`；
+   4. 兜底：`npx --yes @deepseek-ai/dsh@0.1.0-rc.6`。
+2. 以 `web --host 127.0.0.1 --port <DSHPreferredPort>` 启动本地服务——仅监听回环地址。
+   若首选端口被占用（`EADDRINUSE`），自动用随机空闲端口重试一次。
 3. 从子进程输出中解析出 `http://127.0.0.1:<port>` 地址，并在 `WKWebView` 中加载。
 
-Harness 版本在 `Sources/main.swift` 中固定为 `0.1.0-rc.6`。
+Harness 版本在 `Sources/main.swift` 中固定为 `0.1.0-rc.6`（单一常量
+`pinnedDSHVersion`）。
 
 ## 常见问题
 
 | 现象 | 可能原因 | 解决办法 |
 | --- | --- | --- |
-| 提示"找不到 npx，请先安装 Node.js" | `PATH` 中没有 `npx` | 安装 Node.js 后重新启动 |
+| 提示"找不到 dsh，也未找到 npx" | 未找到 `dsh` 或 Node.js/`npx` | 安装 Node.js，或点击"安装全局 dsh" |
 | 首次启动较慢 | `npx` 缓存未命中 | 属正常现象；后续启动会复用缓存的 `dsh` |
 | 窗口显示启动失败 | 本地服务退出 | 查看窗口中显示的最后一行日志，确认固定版本的 `dsh` 可达 |
 | macOS 拦截下载的副本（"已损坏"） | Gatekeeper + 临时签名 | `xattr -dr com.apple.quarantine`（见"安装"一节） |

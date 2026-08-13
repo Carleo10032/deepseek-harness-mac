@@ -5,15 +5,26 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
 
+private struct LaunchCommand {
+    let executable: URL
+    let arguments: [String]
+}
+
 @MainActor
 final class HarnessService: ObservableObject {
     enum State: Equatable {
         case idle
         case starting
+        case installing
         case running
         case failed(String)
         case stopped
     }
+
+    private static let pinnedDSHVersion = "0.1.0-rc.6"
+    private static let defaultPreferredPort = 3080
+    private static let dshOverrideDefaultsKey = "DSHBinOverride"
+    private static let preferredPortDefaultsKey = "DSHPreferredPort"
 
     @Published private(set) var state: State = .idle
     @Published private(set) var serverURL: URL?
@@ -22,11 +33,14 @@ final class HarnessService: ObservableObject {
     private var outputPipe: Pipe?
     private var outputBuffer = ""
     private var requestedStop = false
+    private var installing = false
+    private var attemptedFallbackPort = false
 
     var statusText: String {
         switch state {
         case .idle: "准备启动"
         case .starting: "正在启动 DeepSeek Harness…"
+        case .installing: "正在全局安装 dsh…"
         case .running: "已连接到本地服务"
         case .failed(let message): "启动失败：\(message)"
         case .stopped: "服务已停止"
@@ -34,28 +48,21 @@ final class HarnessService: ObservableObject {
     }
 
     func start() {
-        guard process == nil else { return }
+        guard process == nil, !installing else { return }
+
+        let port = attemptedFallbackPort ? 0 : preferredPort
+        let baseArguments = ["web", "--host", "127.0.0.1", "--port", "\(port)"]
 
         let executableURL: URL
         let arguments: [String]
-        if let dshURL = locateCachedDSH() {
-            executableURL = dshURL
-            arguments = [
-                "web",
-                "--host", "127.0.0.1",
-                "--port", "0"
-            ]
-        } else if let npxURL = locateNPX() {
-            executableURL = npxURL
-            arguments = [
-                "--yes",
-                "@deepseek-ai/dsh@0.1.0-rc.6",
-                "web",
-                "--host", "127.0.0.1",
-                "--port", "0"
-            ]
+        if let command = resolveDirectCommand(baseArguments: baseArguments) {
+            executableURL = command.executable
+            arguments = command.arguments
+        } else if let npx = locateExecutable(named: "npx") {
+            executableURL = npx
+            arguments = ["--yes", "@deepseek-ai/dsh@\(Self.pinnedDSHVersion)"] + baseArguments
         } else {
-            state = .failed("找不到 npx，请先安装 Node.js")
+            state = .failed("找不到 dsh，也未找到 npx。请先安装 Node.js（https://nodejs.org），或点“安装全局 dsh”。")
             return
         }
 
@@ -126,6 +133,8 @@ final class HarnessService: ObservableObject {
         stop()
         process = nil
         outputPipe = nil
+        installing = false
+        attemptedFallbackPort = false
         state = .idle
         start()
     }
@@ -136,7 +145,8 @@ final class HarnessService: ObservableObject {
             outputBuffer = String(outputBuffer.suffix(16_384))
         }
 
-        guard serverURL == nil,
+        guard !installing,
+              serverURL == nil,
               let range = outputBuffer.range(
                   of: #"http://127\.0\.0\.1:[0-9]+"#,
                   options: .regularExpression
@@ -153,9 +163,32 @@ final class HarnessService: ObservableObject {
         process = nil
         outputPipe = nil
 
+        if installing {
+            installing = false
+            if status == 0 {
+                attemptedFallbackPort = false
+                state = .idle
+                start()
+            } else {
+                let lastLine = outputBuffer
+                    .split(whereSeparator: \.isNewline)
+                    .last
+                    .map(String.init) ?? "退出码 \(status)"
+                state = .failed("全局安装失败：\(lastLine)")
+            }
+            return
+        }
+
         if requestedStop {
             state = .stopped
         } else if serverURL == nil {
+            if !attemptedFallbackPort,
+               outputBuffer.localizedCaseInsensitiveContains("EADDRINUSE") {
+                attemptedFallbackPort = true
+                outputBuffer = ""
+                start()
+                return
+            }
             let lastLine = outputBuffer
                 .split(whereSeparator: \.isNewline)
                 .last
@@ -167,22 +200,125 @@ final class HarnessService: ObservableObject {
         }
     }
 
-    private func locateNPX() -> URL? {
+    func installGlobalDSH() {
+        guard process == nil, !installing else { return }
+        guard let npm = locateExecutable(named: "npm") else {
+            state = .failed("找不到 npm，无法全局安装。请先安装 Node.js（https://nodejs.org）。")
+            return
+        }
+
+        installing = true
+        requestedStop = false
+        outputBuffer = ""
+        serverURL = nil
+        state = .installing
+
+        let task = Process()
+        let pipe = Pipe()
+        task.executableURL = npm
+        task.arguments = ["install", "--global", "@deepseek-ai/dsh@\(Self.pinnedDSHVersion)"]
+        task.currentDirectoryURL = defaultWorkingDirectory()
+
+        var environment = ProcessInfo.processInfo.environment
+        let requiredPaths = [
+            npm.deletingLastPathComponent().path,
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin"
+        ]
+        let existingPath = environment["PATH"] ?? ""
+        environment["PATH"] = (requiredPaths + [existingPath]).joined(separator: ":")
+        task.environment = environment
+
+        task.standardOutput = pipe
+        task.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.consumeOutput(text)
+            }
+        }
+
+        task.terminationHandler = { [weak self] finishedTask in
+            DispatchQueue.main.async {
+                self?.handleTermination(status: finishedTask.terminationStatus)
+            }
+        }
+
+        do {
+            try task.run()
+            process = task
+            outputPipe = pipe
+        } catch {
+            installing = false
+            pipe.fileHandleForReading.readabilityHandler = nil
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    private var preferredPort: Int {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: Self.preferredPortDefaultsKey) != nil else {
+            return Self.defaultPreferredPort
+        }
+        let value = defaults.integer(forKey: Self.preferredPortDefaultsKey)
+        return (0...65535).contains(value) ? value : Self.defaultPreferredPort
+    }
+
+    private var dshOverridePath: String? {
+        let value = UserDefaults.standard
+            .string(forKey: Self.dshOverrideDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+
+    private func resolveDirectCommand(baseArguments: [String]) -> LaunchCommand? {
+        let fileManager = FileManager.default
+        if let override = dshOverridePath,
+           fileManager.isExecutableFile(atPath: override) {
+            return LaunchCommand(
+                executable: URL(fileURLWithPath: override),
+                arguments: baseArguments
+            )
+        }
+        if let global = locateExecutable(named: "dsh") {
+            return LaunchCommand(executable: global, arguments: baseArguments)
+        }
+        if let cached = locateCachedDSH() {
+            return LaunchCommand(executable: cached, arguments: baseArguments)
+        }
+        return nil
+    }
+
+    private func locateExecutable(named name: String) -> URL? {
         let fileManager = FileManager.default
         let home = fileManager.homeDirectoryForCurrentUser.path
-        let fixedCandidates = [
-            "/opt/homebrew/bin/npx",
-            "/usr/local/bin/npx",
-            "\(home)/.volta/bin/npx",
-            "/usr/bin/npx"
+        let fixedDirectories = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "\(home)/.volta/bin",
+            "\(home)/.local/bin",
+            "\(home)/.npm-global/bin",
+            "\(home)/Library/pnpm"
         ]
 
-        for path in fixedCandidates where fileManager.isExecutableFile(atPath: path) {
-            return URL(fileURLWithPath: path)
+        for directory in fixedDirectories {
+            let path = "\(directory)/\(name)"
+            if fileManager.isExecutableFile(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+
+        if let viaWhich = locateViaWhich(name) {
+            return viaWhich
         }
 
         for directory in (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":") {
-            let path = "\(directory)/npx"
+            let path = "\(directory)/\(name)"
             if fileManager.isExecutableFile(atPath: path) {
                 return URL(fileURLWithPath: path)
             }
@@ -191,22 +327,36 @@ final class HarnessService: ObservableObject {
         return nil
     }
 
+    private func locateViaWhich(_ name: String) -> URL? {
+        let task = Process()
+        let pipe = Pipe()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        task.arguments = ["-a", name]
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
+            let fileManager = FileManager.default
+            for line in output.split(whereSeparator: \.isNewline) {
+                let path = String(line)
+                if fileManager.isExecutableFile(atPath: path) {
+                    return URL(fileURLWithPath: path)
+                }
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
     private func locateCachedDSH() -> URL? {
         let fileManager = FileManager.default
-        let home = fileManager.homeDirectoryForCurrentUser
-        let globalCandidates = [
-            URL(fileURLWithPath: "/opt/homebrew/bin/dsh"),
-            URL(fileURLWithPath: "/usr/local/bin/dsh"),
-            home.appendingPathComponent(".volta/bin/dsh")
-        ]
-
-        if let global = globalCandidates.first(where: {
-            fileManager.isExecutableFile(atPath: $0.path)
-        }) {
-            return global
-        }
-
-        let cacheRoot = home.appendingPathComponent(".npm/_npx", isDirectory: true)
+        let cacheRoot = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".npm/_npx", isDirectory: true)
         guard let cacheDirectories = try? fileManager.contentsOfDirectory(
             at: cacheRoot,
             includingPropertiesForKeys: [.contentModificationDateKey],
@@ -228,7 +378,7 @@ final class HarnessService: ObservableObject {
             guard fileManager.isExecutableFile(atPath: executable.path),
                   let data = try? Data(contentsOf: packageJSON),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  object["version"] as? String == "0.1.0-rc.6"
+                  object["version"] as? String == Self.pinnedDSHVersion
             else { continue }
             return executable
         }
@@ -688,7 +838,7 @@ struct ContentView: View {
                 HarnessWebView(url: url)
             } else {
                 VStack(spacing: 16) {
-                    if service.state == .starting {
+                    if service.state == .starting || service.state == .installing {
                         ProgressView()
                             .controlSize(.large)
                     }
@@ -701,10 +851,16 @@ struct ContentView: View {
                         .frame(maxWidth: 520)
 
                     if case .failed = service.state {
-                        Button("重新启动") {
-                            service.restart()
+                        HStack(spacing: 12) {
+                            Button("重新启动") {
+                                service.restart()
+                            }
+                            .keyboardShortcut(.defaultAction)
+
+                            Button("安装全局 dsh") {
+                                service.installGlobalDSH()
+                            }
                         }
-                        .keyboardShortcut(.defaultAction)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
