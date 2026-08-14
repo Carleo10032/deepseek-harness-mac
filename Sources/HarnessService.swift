@@ -134,13 +134,18 @@ final class HarnessService: ObservableObject {
     }
 
     func restart() {
-        stop()
-        process = nil
-        outputPipe = nil
-        installing = false
-        attemptedFallbackPort = false
-        state = .idle
-        start()
+        // Wait for the old process tree to actually exit before launching the
+        // replacement, so the new instance never races the dying one for the
+        // preferred port (which would silently fall back to a random port).
+        stop { [weak self] in
+            guard let self else { return }
+            self.process = nil
+            self.outputPipe = nil
+            self.installing = false
+            self.attemptedFallbackPort = false
+            self.state = .idle
+            self.start()
+        }
     }
 
     private func consumeOutput(_ text: String) {

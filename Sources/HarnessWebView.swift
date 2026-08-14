@@ -75,6 +75,7 @@ struct HarnessWebView: NSViewRepresentable {
         private var activeDownloads: [WKDownload] = []
         private var destinations: [ObjectIdentifier: URL] = [:]
         private var userCancelledDownloads: Set<ObjectIdentifier> = []
+        private var sessionLogDownloads: Set<ObjectIdentifier> = []
         private weak var webView: WKWebView?
 
         func attach(to webView: WKWebView) {
@@ -237,6 +238,9 @@ struct HarnessWebView: NSViewRepresentable {
             suggestedFilename: String,
             completionHandler: @escaping (URL?) -> Void
         ) {
+            if isSessionLogDownload(response: response, suggestedFilename: suggestedFilename) {
+                sessionLogDownloads.insert(ObjectIdentifier(download))
+            }
             let panel = NSSavePanel()
             let contentType = response.mimeType.flatMap {
                 UTType.types(tag: $0, tagClass: .mimeType, conformingTo: nil).first
@@ -278,9 +282,10 @@ struct HarnessWebView: NSViewRepresentable {
         }
 
         func downloadDidFinish(_ download: WKDownload) {
+            let isSessionLog = sessionLogDownloads.remove(ObjectIdentifier(download)) != nil
             let destination = destinations.removeValue(forKey: ObjectIdentifier(download))
             finish(download)
-            showDownloadSucceeded(destination: destination)
+            showDownloadSucceeded(destination: destination, isSessionLog: isSessionLog)
         }
 
         func download(
@@ -290,6 +295,7 @@ struct HarnessWebView: NSViewRepresentable {
         ) {
             let userCancelled = userCancelledDownloads.remove(ObjectIdentifier(download)) != nil
             destinations.removeValue(forKey: ObjectIdentifier(download))
+            sessionLogDownloads.remove(ObjectIdentifier(download))
             finish(download)
             guard !userCancelled, !isSystemCancellation(error) else { return }
 
@@ -325,10 +331,20 @@ struct HarnessWebView: NSViewRepresentable {
             return false
         }
 
-        private func showDownloadSucceeded(destination: URL?) {
+        /// Session log exports follow the stable `dsh-session-*.zip` filename
+        /// convention and the `/api/session.export` endpoint (owned by
+        /// @deepseek-ai/dsh-session-log-export), which distinguishes them from
+        /// ordinary attachment downloads.
+        private func isSessionLogDownload(response: URLResponse, suggestedFilename: String) -> Bool {
+            let path = response.url?.path.lowercased() ?? ""
+            return path.hasSuffix("session.export")
+                || suggestedFilename.lowercased().hasPrefix("dsh-session-")
+        }
+
+        private func showDownloadSucceeded(destination: URL?, isSessionLog: Bool) {
             let alert = NSAlert()
             alert.alertStyle = .informational
-            alert.messageText = "Session 日志下载成功"
+            alert.messageText = isSessionLog ? "Session 日志下载成功" : "文件下载成功"
             alert.informativeText = destination?.path ?? "文件已保存到你选择的位置。"
             if let window = NSApp.keyWindow ?? NSApp.mainWindow {
                 alert.beginSheetModal(for: window)
