@@ -9,6 +9,8 @@ EXECUTABLE="$APP_BUNDLE/Contents/MacOS/DeepSeekHarnessApp"
 /bin/rm -rf "$BUILD_DIR"
 /bin/mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
+SOURCES=("$SCRIPT_DIR"/Sources/*.swift)
+
 /usr/bin/xcrun swiftc \
     -O \
     -parse-as-library \
@@ -16,7 +18,7 @@ EXECUTABLE="$APP_BUNDLE/Contents/MacOS/DeepSeekHarnessApp"
     -framework Combine \
     -framework SwiftUI \
     -framework WebKit \
-    "$SCRIPT_DIR/Sources/main.swift" \
+    "${SOURCES[@]}" \
     -o "$EXECUTABLE"
 
 /bin/cp "$SCRIPT_DIR/Info.plist" "$APP_BUNDLE/Contents/Info.plist"

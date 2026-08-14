@@ -102,7 +102,7 @@ open "/Applications/DeepSeek Harness.app"
   known.
 - The harness session runs with `~/Documents/Vibe` as its working directory when that
   folder exists, otherwise your home directory
-  (see `defaultWorkingDirectory()` in [`Sources/main.swift`](Sources/main.swift)).
+  (see `defaultWorkingDirectory()` in [`Sources/HarnessService.swift`](Sources/HarnessService.swift)).
 - Click the red close button to hide the window — the service keeps running. Click the Dock
   icon to bring the window back.
 - Press `⌘Q` to fully quit the app and shut down the service.
@@ -112,13 +112,14 @@ open "/Applications/DeepSeek Harness.app"
 
 ## Configuration
 
-Two launch-time settings are read from `UserDefaults` (set them with `defaults write`
-against the bundle id `io.github.carleo10032.deepseek-harness-mac`):
+The following launch-time settings are read from `UserDefaults` (set them with
+`defaults write` against the bundle id `io.github.carleo10032.deepseek-harness-mac`):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `DSHPreferredPort` | `3080` | Preferred local port. `0` means "always pick a random free port". |
 | `DSHBinOverride` | *(empty)* | Absolute path to a specific `dsh` executable, taking priority over every auto-discovered source. |
+| `DSHPinnedVersion` | `0.1.0-rc.6` | `dsh` version used for the npx cache lookup, the `npx` fallback, and the global install. Set it to `latest` to always use the newest release. |
 
 ```bash
 # Serve on a different fixed port
@@ -126,6 +127,9 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHPreferredPort -int 
 
 # Pin the app to a custom dsh build
 defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string "/path/to/dsh"
+
+# Follow the newest dsh release instead of the pinned version
+defaults write io.github.carleo10032.deepseek-harness-mac DSHPinnedVersion -string "latest"
 ```
 
 ## How it works
@@ -133,16 +137,18 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string
 1. On launch, the app locates a DeepSeek Harness executable, in order:
    1. the `DSHBinOverride` path (when set and executable),
    2. a global `dsh` on `PATH` (Homebrew, Volta, `~/.local/bin`, `~/.npm-global/bin`, …),
-   3. the `dsh` matching version `0.1.0-rc.6` inside the `~/.npm/_npx` cache,
-   4. fallback: `npx --yes @deepseek-ai/dsh@0.1.0-rc.6`.
+   3. the `dsh` matching the configured version inside the `~/.npm/_npx` cache,
+   4. fallback: `npx --yes @deepseek-ai/dsh@<version>` (or plain `@deepseek-ai/dsh`
+      when set to `latest`).
 2. It runs `web --host 127.0.0.1 --port <DSHPreferredPort>` — a loopback-only listener. If
    the preferred port is already in use (`EADDRINUSE`), it retries once with a random free
    port.
 3. It parses the `http://127.0.0.1:<port>` URL from the child process output and loads it
    in a `WKWebView`.
 
-The harness version is pinned to `0.1.0-rc.6` in a single constant
-(`pinnedDSHVersion`) in `Sources/main.swift`.
+The harness version defaults to `0.1.0-rc.6` and is controlled by the
+`DSHPinnedVersion` setting (see Configuration). Set it to `latest` to always follow
+the newest release.
 
 ## Troubleshooting
 

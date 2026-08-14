@@ -93,7 +93,7 @@ open "/Applications/DeepSeek Harness.app"
 
 - 启动 App，本地服务就绪后会自动加载 Web UI。
 - Harness 会话的工作目录：若 `~/Documents/Vibe` 存在则使用它，否则使用你的主目录
-  （见 [`Sources/main.swift`](Sources/main.swift) 中的 `defaultWorkingDirectory()`）。
+  （见 [`Sources/HarnessService.swift`](Sources/HarnessService.swift) 中的 `defaultWorkingDirectory()`）。
 - 点击红色关闭按钮隐藏窗口，服务继续运行；点击 Dock 图标恢复窗口。
 - 按 `⌘Q` 完全退出 App 并关闭本地服务。
 - 启动失败时，窗口会显示最后一行日志、"重新启动"按钮，以及一个
@@ -102,13 +102,14 @@ open "/Applications/DeepSeek Harness.app"
 
 ## 配置
 
-两个启动期设置从 `UserDefaults` 读取（用 `defaults write` 写入，域名是
+以下启动期设置从 `UserDefaults` 读取（用 `defaults write` 写入，域名是
 `io.github.carleo10032.deepseek-harness-mac`）：
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
 | `DSHPreferredPort` | `3080` | 首选本地端口；设为 `0` 表示"每次都用随机空闲端口"。 |
 | `DSHBinOverride` | *(空)* | 指向某个 `dsh` 可执行文件的绝对路径，优先级高于所有自动发现来源。 |
+| `DSHPinnedVersion` | `0.1.0-rc.6` | 用于 npx 缓存查找、`npx` 兜底和全局安装的 `dsh` 版本；设为 `latest` 则始终使用最新版本。 |
 
 ```bash
 # 改用其他固定端口
@@ -116,6 +117,9 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHPreferredPort -int 
 
 # 固定使用自定义 dsh 构建
 defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string "/path/to/dsh"
+
+# 始终跟随最新 dsh 版本，而不是固定版本
+defaults write io.github.carleo10032.deepseek-harness-mac DSHPinnedVersion -string "latest"
 ```
 
 ## 工作原理
@@ -123,14 +127,14 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHBinOverride -string
 1. 启动时，App 按以下顺序寻找 DeepSeek Harness 可执行文件：
    1. `DSHBinOverride` 指定的路径（若设置且可执行）；
    2. `PATH` 中的全局 `dsh`（Homebrew、Volta、`~/.local/bin`、`~/.npm-global/bin` 等）；
-   3. `~/.npm/_npx` 缓存中版本匹配 `0.1.0-rc.6` 的 `dsh`；
-   4. 兜底：`npx --yes @deepseek-ai/dsh@0.1.0-rc.6`。
+   3. `~/.npm/_npx` 缓存中版本匹配所配置版本的 `dsh`；
+   4. 兜底：`npx --yes @deepseek-ai/dsh@<版本>`（设为 `latest` 时用 `@deepseek-ai/dsh`）。
 2. 以 `web --host 127.0.0.1 --port <DSHPreferredPort>` 启动本地服务——仅监听回环地址。
    若首选端口被占用（`EADDRINUSE`），自动用随机空闲端口重试一次。
 3. 从子进程输出中解析出 `http://127.0.0.1:<port>` 地址，并在 `WKWebView` 中加载。
 
-Harness 版本在 `Sources/main.swift` 中固定为 `0.1.0-rc.6`（单一常量
-`pinnedDSHVersion`）。
+Harness 版本默认是 `0.1.0-rc.6`，由 `DSHPinnedVersion` 设置控制（见"配置"一节）；
+设为 `latest` 可始终跟随最新版本。
 
 ## 常见问题
 
