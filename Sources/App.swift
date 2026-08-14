@@ -36,16 +36,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        if flag {
-            // A window already exists (including a fullscreen one): let macOS
-            // bring it forward and switch to its Space on the first Dock click.
-            // Returning true here would swallow that default and make the user
-            // click twice when the app lives on a fullscreen Space.
-            return false
+        // Explicitly activate the app and bring the main window forward. The
+        // explicit activation also switches to the app's fullscreen Space on
+        // the first Dock click — the implicit reopen activation alone only
+        // flips the menu bar, which is why fullscreen used to need two clicks.
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
         }
         let window = mainWindow ?? NSApp.windows.first(where: { isMainContentWindow($0) })
         window?.makeKeyAndOrderFront(nil)
-        return true
+        return false
     }
 
     private func observeMainWindow() {
