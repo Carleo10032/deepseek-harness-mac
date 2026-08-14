@@ -1,61 +1,14 @@
 import AppKit
-import Combine
 import Foundation
 import SwiftUI
 
 @MainActor
-final class AppSettings: ObservableObject {
-    enum IconStyle: String, CaseIterable {
-        case black
-        case blue
-
-        var label: String {
-            switch self {
-            case .black: "黑色"
-            case .blue: "蓝色"
-            }
-        }
-    }
-
-    private static let iconStyleDefaultsKey = "DSHIconStyle"
-
-    @Published var iconStyle: IconStyle {
-        didSet {
-            UserDefaults.standard.set(iconStyle.rawValue, forKey: Self.iconStyleDefaultsKey)
-            apply()
-        }
-    }
-
-    init() {
-        let stored = UserDefaults.standard.string(forKey: Self.iconStyleDefaultsKey)
-        iconStyle = stored.flatMap(IconStyle.init(rawValue:)) ?? .black
-    }
-
-    /// Updates the Dock icon to match the current style. `.black` reverts to
-    /// the bundled icon (black whale on white); `.blue` uses the bundled
-    /// blue whale variant on the same white background.
-    func apply() {
-        switch iconStyle {
-        case .black:
-            NSApp.applicationIconImage = nil
-        case .blue:
-            if let url = Bundle.main.url(forResource: "AppIcon-blue", withExtension: "png"),
-               let image = NSImage(contentsOf: url) {
-                NSApp.applicationIconImage = image
-            }
-        }
-    }
-}
-
-@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let service = HarnessService()
-    let settings = AppSettings()
     private var mainWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         service.start()
-        settings.apply()
         observeMainWindow()
     }
 
@@ -132,17 +85,5 @@ struct DeepSeekHarnessDesktopApp: App {
             ContentView(service: appDelegate.service)
         }
         .defaultSize(width: 1200, height: 800)
-        .commands {
-            CommandMenu("图标颜色") {
-                Picker("图标颜色", selection: Binding(
-                    get: { appDelegate.settings.iconStyle },
-                    set: { appDelegate.settings.iconStyle = $0 }
-                )) {
-                    ForEach(AppSettings.IconStyle.allCases, id: \.self) { style in
-                        Text(style.label).tag(style)
-                    }
-                }
-            }
-        }
     }
 }
