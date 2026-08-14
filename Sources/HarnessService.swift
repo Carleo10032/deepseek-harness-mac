@@ -33,7 +33,6 @@ final class HarnessService: ObservableObject {
     private var outputBuffer = ""
     private var requestedStop = false
     private var installing = false
-    private var attemptedFallbackPort = false
 
     var statusText: String {
         switch state {
@@ -53,7 +52,35 @@ final class HarnessService: ObservableObject {
     func start() {
         guard process == nil, !installing else { return }
 
-        let port = attemptedFallbackPort ? 0 : preferredPort
+        requestedStop = false
+        outputBuffer = ""
+        serverURL = nil
+        state = .starting
+
+        if preferredPort == 0 {
+            // Explicitly random port: nothing to probe.
+            launchProcess(port: 0)
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            switch await Self.probeDSH(at: self.preferredPort) {
+            case .dshService:
+                // An existing DeepSeek Harness already serves the preferred
+                // port: connect to it without spawning a child process, so
+                // quitting the app never kills a service it didn't start.
+                self.serverURL = URL(string: "http://127.0.0.1:\(self.preferredPort)")
+                self.state = .running
+            case .nothingListening:
+                self.launchProcess(port: self.preferredPort)
+            case .foreignService:
+                self.state = .failed("端口 \(self.preferredPort) 已被其他程序占用。请修改 DSHPreferredPort 设置更换端口，或关闭占用该端口的程序后重试。")
+            }
+        }
+    }
+
+    private func launchProcess(port: Int) {
         let baseArguments = ["web", "--host", "127.0.0.1", "--port", "\(port)"]
 
         let executableURL: URL
@@ -68,11 +95,6 @@ final class HarnessService: ObservableObject {
             state = .failed("找不到 dsh，也未找到 npx。请先安装 Node.js（https://nodejs.org），或点“安装全局 dsh”。")
             return
         }
-
-        requestedStop = false
-        outputBuffer = ""
-        serverURL = nil
-        state = .starting
 
         let task = Process()
         let pipe = Pipe()
@@ -118,6 +140,50 @@ final class HarnessService: ObservableObject {
         }
     }
 
+    private enum PortProbe {
+        case dshService
+        case nothingListening
+        case foreignService
+    }
+
+    /// Probes the preferred port for an already-running DeepSeek Harness by
+    /// asking for its web manifest. The manifest is served by the shipped Web
+    /// frontend and is the most stable, side-effect-free identity marker.
+    private static func probeDSH(at port: Int) async -> PortProbe {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/manifest.webmanifest") else {
+            return .foreignService
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                return .foreignService
+            }
+            return isDSHManifest(data) ? .dshService : .foreignService
+        } catch let error as URLError {
+            switch error.code {
+            case .cannotConnectToHost, .networkConnectionLost, .cannotFindHost:
+                return .nothingListening
+            default:
+                // Timeout and anything else: be conservative and report a
+                // port conflict instead of risking a silent double-launch.
+                return .foreignService
+            }
+        } catch {
+            return .foreignService
+        }
+    }
+
+    private static func isDSHManifest(_ data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        return (object["name"] as? String) == "DeepSeek Harness"
+            && (object["short_name"] as? String) == "DSH"
+    }
+
     func stop(completion: (() -> Void)? = nil) {
         requestedStop = true
         outputPipe?.fileHandleForReading.readabilityHandler = nil
@@ -136,13 +202,12 @@ final class HarnessService: ObservableObject {
     func restart() {
         // Wait for the old process tree to actually exit before launching the
         // replacement, so the new instance never races the dying one for the
-        // preferred port (which would silently fall back to a random port).
+        // preferred port.
         stop { [weak self] in
             guard let self else { return }
             self.process = nil
             self.outputPipe = nil
             self.installing = false
-            self.attemptedFallbackPort = false
             self.state = .idle
             self.start()
         }
@@ -180,7 +245,6 @@ final class HarnessService: ObservableObject {
         if installing {
             installing = false
             if status == 0 {
-                attemptedFallbackPort = false
                 state = .idle
                 start()
             } else {
@@ -196,11 +260,11 @@ final class HarnessService: ObservableObject {
         if requestedStop {
             state = .stopped
         } else if serverURL == nil {
-            if !attemptedFallbackPort,
-               outputBuffer.localizedCaseInsensitiveContains("EADDRINUSE") {
-                attemptedFallbackPort = true
-                outputBuffer = ""
-                start()
+            if outputBuffer.localizedCaseInsensitiveContains("EADDRINUSE") {
+                // Lost the race: the probe saw the port free but something
+                // grabbed it before `dsh web` bound it. Report the conflict
+                // explicitly instead of silently switching ports.
+                state = .failed("端口 \(preferredPort) 已被占用。请修改 DSHPreferredPort 设置更换端口，或关闭占用该端口的程序后重试。")
                 return
             }
             let lastLine = outputBuffer

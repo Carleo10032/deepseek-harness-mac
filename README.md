@@ -41,6 +41,9 @@ clicking the Dock icon restores it, and `⌘Q` quits everything.
 - **Dock-friendly lifecycle** — the red close button hides the window while the service
   keeps running; a Dock click restores the window; `⌘Q` fully quits and terminates the
   entire child process tree.
+- **Strict fixed port** — the app probes the preferred port before launching: it connects
+  to an already-running DeepSeek Harness instead of starting a second instance, and reports
+  a clear conflict if another program occupies the port (no silent random-port drift).
 - **External links in your browser** — links to other websites open in your default
   browser instead of hijacking the app window (`target="_blank"` and `window.open`
   included); `mailto:` links are handed to your mail client.
@@ -117,7 +120,7 @@ The following launch-time settings are read from `UserDefaults` (set them with
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `DSHPreferredPort` | `3080` | Preferred local port. `0` means "always pick a random free port". |
+| `DSHPreferredPort` | `3080` | Preferred local port. `0` means "always pick a random free port"; any other value is enforced strictly — a conflicting service is reported instead of silently switching ports. |
 | `DSHBinOverride` | *(empty)* | Absolute path to a specific `dsh` executable, taking priority over every auto-discovered source. |
 | `DSHPinnedVersion` | `0.1.0-rc.6` | `dsh` version used for the npx cache lookup, the `npx` fallback, and the global install. Set it to `latest` to always use the newest release. |
 
@@ -140,9 +143,12 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHPinnedVersion -stri
    3. the `dsh` matching the configured version inside the `~/.npm/_npx` cache,
    4. fallback: `npx --yes @deepseek-ai/dsh@<version>` (or plain `@deepseek-ai/dsh`
       when set to `latest`).
-2. It runs `web --host 127.0.0.1 --port <DSHPreferredPort>` — a loopback-only listener. If
-   the preferred port is already in use (`EADDRINUSE`), it retries once with a random free
-   port.
+2. Before launching, it probes `127.0.0.1:<DSHPreferredPort>` for a running DeepSeek
+   Harness (identified by its `/manifest.webmanifest`). If one is already serving, the app
+   connects to it directly instead of launching a second instance; if another program
+   occupies the port, the app reports the conflict instead of silently switching ports.
+   It then runs `web --host 127.0.0.1 --port <DSHPreferredPort>` — a loopback-only
+   listener.
 3. It parses the `http://127.0.0.1:<port>` URL from the child process output and loads it
    in a `WKWebView`.
 

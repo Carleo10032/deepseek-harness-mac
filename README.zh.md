@@ -38,6 +38,8 @@ Web UI 显示在原生 `WKWebView` 窗口中。窗口符合 macOS 的使用习�
   用户取消时保持静默，只有文件真正保存完成后才显示确认。
 - **Dock 友好** — 红色关闭按钮只隐藏窗口、服务继续运行；点击 Dock 图标恢复窗口；
   `⌘Q` 完全退出并终止整个子进程树。
+- **严格固定端口** — 启动前先探测首选端口：已有正在运行的 DeepSeek Harness 则直接
+  连接而不启动第二个实例；被其他程序占用时明确提示冲突，不再静默漂移到随机端口。
 - **外部链接交给系统浏览器** — 指向其他网站的链接（包括 `target="_blank"` 和
   `window.open`）会在你的默认浏览器中打开，不会抢占 App 窗口；`mailto:` 链接交给邮件
   客户端。
@@ -107,7 +109,7 @@ open "/Applications/DeepSeek Harness.app"
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
-| `DSHPreferredPort` | `3080` | 首选本地端口；设为 `0` 表示"每次都用随机空闲端口"。 |
+| `DSHPreferredPort` | `3080` | 首选本地端口；设为 `0` 表示"每次都用随机空闲端口"，其他值严格生效——端口被占用时明确提示冲突，不再静默换端口。 |
 | `DSHBinOverride` | *(空)* | 指向某个 `dsh` 可执行文件的绝对路径，优先级高于所有自动发现来源。 |
 | `DSHPinnedVersion` | `0.1.0-rc.6` | 用于 npx 缓存查找、`npx` 兜底和全局安装的 `dsh` 版本；设为 `latest` 则始终使用最新版本。 |
 
@@ -129,8 +131,10 @@ defaults write io.github.carleo10032.deepseek-harness-mac DSHPinnedVersion -stri
    2. `PATH` 中的全局 `dsh`（Homebrew、Volta、`~/.local/bin`、`~/.npm-global/bin` 等）；
    3. `~/.npm/_npx` 缓存中版本匹配所配置版本的 `dsh`；
    4. 兜底：`npx --yes @deepseek-ai/dsh@<版本>`（设为 `latest` 时用 `@deepseek-ai/dsh`）。
-2. 以 `web --host 127.0.0.1 --port <DSHPreferredPort>` 启动本地服务——仅监听回环地址。
-   若首选端口被占用（`EADDRINUSE`），自动用随机空闲端口重试一次。
+2. 启动前先探测 `127.0.0.1:<DSHPreferredPort>` 上是否已有正在运行的 DeepSeek Harness
+   （通过其 `/manifest.webmanifest` 识别）：已有则直接连接，不再启动第二个实例；若是
+   其他程序占用，则明确提示端口冲突，而不再静默换端口。然后以
+   `web --host 127.0.0.1 --port <DSHPreferredPort>` 启动本地服务——仅监听回环地址。
 3. 从子进程输出中解析出 `http://127.0.0.1:<port>` 地址，并在 `WKWebView` 中加载。
 
 Harness 版本默认是 `0.1.0-rc.6`，由 `DSHPinnedVersion` 设置控制（见"配置"一节）；
