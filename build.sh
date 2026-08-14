@@ -23,6 +23,7 @@ SOURCES=("$SCRIPT_DIR"/Sources/*.swift)
 
 /bin/cp "$SCRIPT_DIR/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 /bin/cp "$SCRIPT_DIR/Assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+/bin/cp "$SCRIPT_DIR/Assets/AppIcon-blue.png" "$APP_BUNDLE/Contents/Resources/AppIcon-blue.png"
 /usr/bin/codesign --force --sign - "$APP_BUNDLE"
 
 echo "$APP_BUNDLE"

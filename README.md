@@ -49,10 +49,13 @@ clicking the Dock icon restores it, and `⌘Q` quits everything.
 - **Robust startup UI** — the window shows progress while the service boots, loads the web
   UI as soon as the local URL is known, and offers an actionable error state with a restart
   button on failure.
-- **Official icon** — the app icon derives from the official black whale `favicon.svg`
-  shipped in the DeepSeek Harness web UI package, keeping its original path outline and
-  black fill on a rounded white macOS background
-  (generator: [`Scripts/make_icon.swift`](Scripts/make_icon.swift)).
+- **Official icon** — the app icon derives from the official whale `favicon.svg` shipped
+  in the DeepSeek Harness web UI package, keeping its original path outline and black fill
+  on a rounded white macOS background (generator:
+  [`Scripts/make_icon.swift`](Scripts/make_icon.swift)).
+- **Switchable Dock icon** — switch the Dock icon between the black whale and a DeepSeek
+  blue whale on the same white background anytime from the menu bar
+  (图标颜色 ▸ 黑色/蓝色); the choice is remembered across launches.
 
 ## Requirements
 
@@ -106,6 +109,7 @@ open "/Applications/DeepSeek Harness.app"
 - Click the red close button to hide the window — the service keeps running. Click the Dock
   icon to bring the window back.
 - Press `⌘Q` to fully quit the app and shut down the service.
+- To switch the Dock icon color, use the menu bar menu 图标颜色 (黑色/蓝色).
 - If startup fails, the window shows the last log line, a restart button, and an
   **"Install dsh globally"** button that runs `npm install --global @deepseek-ai/dsh` and
   then relaunches.
@@ -120,6 +124,7 @@ The following launch-time settings are read from `UserDefaults` (set them with
 | `DSHPreferredPort` | `3080` | Preferred local port. `0` means "always pick a random free port". |
 | `DSHBinOverride` | *(empty)* | Absolute path to a specific `dsh` executable, taking priority over every auto-discovered source. |
 | `DSHPinnedVersion` | `0.1.0-rc.6` | `dsh` version used for the npx cache lookup, the `npx` fallback, and the global install. Set it to `latest` to always use the newest release. |
+| `DSHIconStyle` | `black` | Dock icon style (`black` or `blue`); can also be switched from the menu bar (图标颜色). |
 
 ```bash
 # Serve on a different fixed port

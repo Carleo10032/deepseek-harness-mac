@@ -44,9 +44,11 @@ Web UI 显示在原生 `WKWebView` 窗口中。窗口符合 macOS 的使用习�
 - **原生对话框** — 网页调用 `alert`、`confirm`、`prompt` 时会显示 macOS 原生对话框。
 - **可靠的启动界面** — 服务启动时显示进度，拿到本地 URL 后立即加载 Web UI；启动失败
   时显示错误状态和"重新启动"按钮。
-- **官方图标** — 应用图标衍生自 DeepSeek Harness Web UI 包中的官方黑色鲸鱼
+- **官方图标** — 应用图标衍生自 DeepSeek Harness Web UI 包中的官方鲸鱼
   `favicon.svg`，保留原始路径轮廓与黑色填充，置于 macOS 白色圆角底板上
   （生成脚本：[`Scripts/make_icon.swift`](Scripts/make_icon.swift)）。
+- **可切换的 Dock 图标** — 随时在菜单栏「图标颜色 ▸ 黑色/蓝色」中切换 Dock 图标：
+  黑色鲸鱼或白底蓝鲸（DeepSeek 蓝）图标；选择会被记住，下次启动保持。
 
 ## 环境要求
 
@@ -96,6 +98,7 @@ open "/Applications/DeepSeek Harness.app"
   （见 [`Sources/HarnessService.swift`](Sources/HarnessService.swift) 中的 `defaultWorkingDirectory()`）。
 - 点击红色关闭按钮隐藏窗口，服务继续运行；点击 Dock 图标恢复窗口。
 - 按 `⌘Q` 完全退出 App 并关闭本地服务。
+- 在菜单栏「图标颜色」中切换 Dock 图标颜色（黑色/蓝色）。
 - 启动失败时，窗口会显示最后一行日志、"重新启动"按钮，以及一个
   **"安装全局 dsh"** 按钮——它会执行 `npm install --global @deepseek-ai/dsh`，成功后
   自动重新启动。
@@ -110,6 +113,7 @@ open "/Applications/DeepSeek Harness.app"
 | `DSHPreferredPort` | `3080` | 首选本地端口；设为 `0` 表示"每次都用随机空闲端口"。 |
 | `DSHBinOverride` | *(空)* | 指向某个 `dsh` 可执行文件的绝对路径，优先级高于所有自动发现来源。 |
 | `DSHPinnedVersion` | `0.1.0-rc.6` | 用于 npx 缓存查找、`npx` 兜底和全局安装的 `dsh` 版本；设为 `latest` 则始终使用最新版本。 |
+| `DSHIconStyle` | `black` | Dock 图标样式（`black` 或 `blue`）；也可在菜单栏「图标颜色」中切换。 |
 
 ```bash
 # 改用其他固定端口
