@@ -23,11 +23,14 @@
 > endorsed by, or sponsored by DeepSeek**. The name "DeepSeek" and the whale logo are
 > trademarks of DeepSeek and remain its property.
 
+<p align="center">
+  <img src="Assets/AppScreenshot.png" alt="DeepSeek Harness Mac 在 macOS 上运行" width="100%" />
+</p>
+
 ## 概览
 
 DeepSeek Harness Mac 以本地服务的方式启动 DeepSeek Harness CLI（`dsh web`），并把它的
-Web UI 显示在原生 `WKWebView` 窗口中。窗口符合 macOS 的使用习惯：点击红色关闭按钮只是
-隐藏界面、服务继续在后台运行；点击 Dock 图标可重新显示窗口；`⌘Q` 则完全退出一切。
+Web UI 显示在原生 `WKWebView` 窗口中。
 
 ## 功能
 
@@ -38,6 +41,8 @@ Web UI 显示在原生 `WKWebView` 窗口中。窗口符合 macOS 的使用习�
   用户取消时保持静默，只有文件真正保存完成后才显示确认。
 - **Dock 友好** — 红色关闭按钮只隐藏窗口、服务继续运行；点击 Dock 图标恢复窗口；
   `⌘Q` 完全退出并终止整个子进程树。
+- **全屏体验优化** — 在全屏模式下关闭窗口时不会残留黑屏；App 位于独立的全屏空间时，
+  点击一次 Dock 图标即可直接切回，无需重复点击。
 - **严格固定端口** — 启动前先探测首选端口：已有正在运行的 DeepSeek Harness 则直接
   连接而不启动第二个实例；被其他程序占用时明确提示冲突，不再静默漂移到随机端口。
 - **外部链接交给系统浏览器** — 指向其他网站的链接（包括 `target="_blank"` 和

@@ -23,6 +23,10 @@
 > **免责声明** — 本项目是社区开发的非官方封装，与 DeepSeek（深度求索）无任何关联，
 > 亦未获得其认可或背书。"DeepSeek" 名称与鲸鱼 Logo 的商标归 DeepSeek 所有。
 
+<p align="center">
+  <img src="Assets/AppScreenshot.png" alt="DeepSeek Harness Mac running on macOS" width="100%" />
+</p>
+
 ## Overview
 
 DeepSeek Harness Mac launches the DeepSeek Harness CLI (`dsh web`) as a local service and
@@ -41,6 +45,9 @@ clicking the Dock icon restores it, and `⌘Q` quits everything.
 - **Dock-friendly lifecycle** — the red close button hides the window while the service
   keeps running; a Dock click restores the window; `⌘Q` fully quits and terminates the
   entire child process tree.
+- **Full-screen experience** — closing the window while in full-screen mode leaves no
+  black screen behind; when the app lives in its own full-screen Space, one Dock click
+  switches straight back without a repeat click.
 - **Strict fixed port** — the app probes the preferred port before launching: it connects
   to an already-running DeepSeek Harness instead of starting a second instance, and reports
   a clear conflict if another program occupies the port (no silent random-port drift).
